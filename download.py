@@ -23,7 +23,8 @@ if not os.path.exists(OUTPUT_PATH):
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(
-        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB)"""
+        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB);
+        PRAGMA journal_mode=WAL;"""
     )
     return db
 
@@ -62,7 +63,7 @@ def importer(Q):
             keep_going = Q.get(timeout=IMPORT_INTERVAL)
             logging.info("Importer: None, received stopping.")
         except queue.Empty:
-            continue
+            pass
         if time.time() - last_import > IMPORT_INTERVAL:
             added = []
             for filename in os.listdir(OUTPUT_PATH):
@@ -72,11 +73,11 @@ def importer(Q):
                 file_contents = open(filepath, "rb").read()
                 timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.gmtime())
                 db.execute(
-                    "INSERT INTO objs VALUES (?, ?, ?)",
-                    (filename.replace(".xml.gz", ""), timestamp, file_contents),
+                    "UPDATE objs SET download_timestamp = ?, xmlbufgz = ? WHERE uid = ?",
+                    (timestamp, file_contents, filename.replace(".xml.gz", "")),
                 )
                 added.append(filepath)
-            logging.info("Committing to database")
+            logging.info(f"Committing {len(added)} to database")
             db.commit()
             for filepath in added:
                 os.remove(filepath)

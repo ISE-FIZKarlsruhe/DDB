@@ -13,7 +13,8 @@ DB_PATH = os.environ.get("DB_PATH")
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(
-        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB)"""
+        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB);
+        PRAGMA journal_mode=WAL;"""
     )
     return db
 
