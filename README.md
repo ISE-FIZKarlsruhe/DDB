@@ -4,15 +4,9 @@ Misc scripts and docs for working with [DDB](https://www.deutsche-digitale-bibli
 
 ## Downloads
 
-The `download.py` script reads in object IDs to be downloaded from a sqlite database file, and retrieves the data via HTTP from the DDB, using the URI: `https://www.deutsche-digitale-bibliothek.de/item/xml/`
+The `download.py` script reads in object IDs to be downloaded from a sqlite database file, and retrieves the data via HTTP from the DDB
 
-The downloaded data is stored in a table that looks like:
-
-```sql
-CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB)
-```
-
-To start, you need to "prime" the table with a list of object IDs to download, this is done with the `download_prime.py` script. This script reads in the IDs from standard in, one per line, and stores the list in the `objs` table with NULL values for the `download_timestamp` and `xmlbufgz` fields.
+To start, you need to "prime" the table with a list of object IDs to download, this is done with the `download_prime.py` script. This script reads in the IDs from standard in, one per line, and stores the list in the `objs` and `srcs` tables with NULL values for the `download_timestamp` and `bufgz` fields.
 
 For example:
 
