@@ -13,8 +13,9 @@ DB_PATH = os.environ.get("DB_PATH")
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(
-        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB);
-        PRAGMA journal_mode=WAL;"""
+        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, bufgz BLOB);
+           CREATE TABLE IF NOT EXISTS srcs (uid TEXT PRIMARY KEY, download_timestamp TEXT, bufgz BLOB);
+           PRAGMA journal_mode=WAL;"""
     )
     return db
 
@@ -22,6 +23,7 @@ def get_db():
 def main():
     db = get_db()
     lines = [(line.strip(),) for line in sys.stdin]
+    logging.debug(f"Read {len(lines)} lines")
     db.executemany("INSERT OR IGNORE INTO objs VALUES (?, null, null)", lines)
     db.commit()
     logging.info(f"Inserted {len(lines)}")

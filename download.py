@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 
 DB_PATH = os.environ.get("DB_PATH")
-DDB_URI = "https://www.deutsche-digitale-bibliothek.de/item/xml/"
+DDB_URI = "https://api.deutsche-digitale-bibliothek.de/2/items/"
 BUF_SIZE = int(os.environ.get("BUF_SIZE", 999))
 SELECT_SIZE = int(os.environ.get("SELECT_SIZE", 500000))
 WORKER_COUNT = int(os.environ.get("WORKER_COUNT", 4))
@@ -23,10 +23,29 @@ if not os.path.exists(OUTPUT_PATH):
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(
-        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, xmlbufgz BLOB);
-        PRAGMA journal_mode=WAL;"""
+        """CREATE TABLE IF NOT EXISTS objs (uid TEXT PRIMARY KEY, download_timestamp TEXT, bufgz BLOB);
+           CREATE TABLE IF NOT EXISTS srcs (uid TEXT PRIMARY KEY, download_timestamp TEXT, bufgz BLOB);
+           PRAGMA journal_mode=WAL;"""
     )
     return db
+
+
+def download_obj(uid, output_filepath):
+    if os.path.exists(output_filepath):
+        return
+
+    with httpx.Client() as client:
+        try:
+            uri = DDB_URI + uid
+            resp = client.get(uri, follow_redirects=True, timeout=30.0)
+            if resp.status_code == 200:
+                open(output_filepath, "wb").write(gzip.compress(resp.content))
+            else:
+                logging.error(
+                    f"Problem retrieving {uid} status code was {resp.status_code}"
+                )
+        except:
+            logging.error(f"Problem with {uid}")
 
 
 def worker(number, Q):
@@ -36,22 +55,8 @@ def worker(number, Q):
             logging.info(f"Worker {number} None, received stopping.")
             break
 
-        output_filpath = os.path.join(OUTPUT_PATH, uid) + ".xml.gz"
-        if os.path.exists(output_filpath):
-            continue
-
-        with httpx.Client() as client:
-            try:
-                uri = DDB_URI + uid
-                resp = client.get(uri, follow_redirects=True, timeout=30.0)
-                if resp.status_code == 200:
-                    open(output_filpath, "wb").write(gzip.compress(resp.content))
-                else:
-                    logging.error(
-                        f"Problem retrieving {uid} status code was {resp.status_code}"
-                    )
-            except:
-                logging.error(f"Problem with {uid}")
+        download_obj(uid, os.path.join(OUTPUT_PATH, uid) + ".json.gz")
+        download_obj(f"{uid}/source/record", os.path.join(OUTPUT_PATH, uid) + ".xml.gz")
 
 
 def importer(Q):
@@ -67,14 +72,20 @@ def importer(Q):
         if time.time() - last_import > IMPORT_INTERVAL:
             added = []
             for filename in os.listdir(OUTPUT_PATH):
-                if not filename.endswith(".xml.gz"):
-                    continue
                 filepath = os.path.join(OUTPUT_PATH, filename)
                 file_contents = open(filepath, "rb").read()
+                if filename.endswith(".xml.gz"):
+                    table_name = "srcs"
+                    uid = filename.replace(".xml.gz", "")
+                elif filename.endswith(".json.gz"):
+                    table_name = "objs"
+                    uid = filename.replace(".json.gz", "")
+                else:
+                    continue
                 timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.gmtime())
                 db.execute(
-                    "UPDATE objs SET download_timestamp = ?, xmlbufgz = ? WHERE uid = ?",
-                    (timestamp, file_contents, filename.replace(".xml.gz", "")),
+                    f"UPDATE {table_name} SET download_timestamp = ?, bufgz = ? WHERE uid = ?",
+                    (timestamp, file_contents, uid),
                 )
                 added.append(filepath)
             logging.info(f"Committing {len(added)} to database")
@@ -102,7 +113,7 @@ def main():
         uids = [
             uid
             for uid, _ in db.execute(
-                f"SELECT uid, download_timestamp FROM objs WHERE xmlbufgz IS NULL LIMIT {SELECT_SIZE}"
+                f"SELECT uid, download_timestamp FROM objs WHERE bufgz IS NULL LIMIT {SELECT_SIZE}"
             )
         ]
         if len(uids) < 1:
